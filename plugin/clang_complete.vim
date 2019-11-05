@@ -124,6 +124,36 @@ function! s:ClangCompleteInit()
     let g:clang_auto_user_options = '.clang_complete, path'
   endif
 
+  if !exists('g:clang_c_standard')
+    let g:clang_c_standard = 'gnu99'
+  endif
+
+  if !exists('g:clang_cxx_standard')
+    let g:clang_cxx_standard = 'gnu++11'
+  endif
+
+  if has("macunix")
+    if !exists("g:clang_target_triple") && !exists('g:clang_macos_architecture')
+      let g:clang_macos_architecture = ''
+      let g:clang_target_triple = ''
+    endif
+  elseif !exists("g:clang_target_triple")
+    let g:clang_target_triple = ''
+    let g:clang_macos_architecture = ''
+  endif
+
+  if !exists("g:clang_target_bits")
+    let g:clang_target_bits = ''
+  endif
+
+  if !exists("g:clang_system_root")
+    let g:clang_system_root = ''
+  endif
+
+  if !exists("g:clang_standard_cxx_library")
+    let g:clang_standard_cxx_library = ''
+  endif
+
   if !exists('g:clang_jumpto_declaration_key')
     let g:clang_jumpto_declaration_key = '<C-]>'
   endif
@@ -282,7 +312,7 @@ function! s:processFilename(filename, root)
   if matchstr(a:filename, '\C^[''"\\]\=/') != ''
     let l:filename = a:filename
   " Handle Windows absolute path
-  elseif s:isWindows() 
+  elseif s:isWindows()
        \ && matchstr(a:filename, '\C^"\=[a-zA-Z]:[/\\]') != ''
     let l:filename = a:filename
   " Convert relative path to absolute path
@@ -304,7 +334,7 @@ function! s:processFilename(filename, root)
       let l:filename = shellescape(a:root) . a:filename
     endif
   endif
-  
+
   return l:filename
 endfunction
 
@@ -377,7 +407,7 @@ function! s:initClangCompletePython()
     execute s:py_cmd 'import sys'
     execute s:py_cmd 'import json'
 
-    execute s:py_cmd 'sys.path = ["' . s:plugin_path . '"] + sys.path'
+    execute s:py_cmd 'sys.path.append("' . s:plugin_path . '")'
     execute s:pyfile_cmd fnameescape(s:plugin_path) . '/libclang.py'
 
     try

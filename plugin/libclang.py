@@ -6,6 +6,7 @@ import time
 import threading
 import os
 import shlex
+import subprocess
 
 from kinds import kinds
 
@@ -64,6 +65,51 @@ def getBuiltinHeaderPath(library_path):
 
   return None
 
+def getNextArgument(args, key, startsWith=False):
+  i = iter(args)
+  try:
+    return next(next(i) for arg in i if (not startsWith and arg == key) or (startsWith and arg.startswith(key)))
+  except:
+    return None
+
+def getClangDefaultPaths(library_path, language, sys_root, cxx_stdlib):
+  if os.path.isfile(library_path):
+    library_path = os.path.dirname(library_path)
+
+  clang_bin_path = library_path + "/../bin/clang"
+
+  clang_args = [clang_bin_path]
+
+  clang_args.append("-v")
+
+  if sys_root:
+    clang_args.append("-isysroot")
+    clang_args.append(sys_root)
+
+  if cxx_stdlib:
+    clang_args.append("-stdlib=" + cxx_stdlib)
+
+  clang_args.append("-x")
+  if not language:
+    clang_args.append("c++")
+  else:
+    clang_args.append(language)
+
+  clang_args.append("-fsyntax-only")
+  clang_args.append("-")
+
+  clang_command = subprocess.Popen(clang_args,
+                                   encoding="utf-8",
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE,
+                                   stdin=subprocess.PIPE,
+                                   shell=False)
+  clang_command.stdin.close()
+
+  clang_output = clang_command.stderr.readlines()
+  return list(filter(lambda line: line.startswith('/') and not '(framework directory)' in line,
+                     map(lambda line: str.strip(line), clang_output)))
+
 def initClangComplete(clang_complete_flags, clang_compilation_database, \
                       library_path):
   global index
@@ -95,6 +141,21 @@ def initClangComplete(clang_complete_flags, clang_compilation_database, \
     %s
     ''' % (suggestion, exception_msg))
     return 0
+
+  global systemRootPath
+  systemRootPath = vim.eval("g:clang_system_root") or None
+
+  global targetBits, targetTriple, targetDarwinArch
+  targetBits = vim.eval("g:clang_target_bits") or None
+  targetTriple = vim.eval("g:clang_target_triple") or None
+  targetDarwinArch = vim.eval("g:clang_macos_architecture") or None
+
+  global languageCStandard, languageCxxStandard
+  languageCStandard = vim.eval("g:clang_c_standard") or None
+  languageCxxStandard = vim.eval("g:clang_cxx_standard") or None
+
+  global standardCxxLibrary
+  standardCxxLibrary = vim.eval("g:clang_standard_cxx_library") or None
 
   global builtinHeaderPath
   builtinHeaderPath = None
@@ -343,15 +404,55 @@ def getCompilationDBParams(fileName):
 getCompilationDBParams.last_query = { 'args': [], 'cwd': None }
 
 def getCompileParams(fileName):
-  global builtinHeaderPath
+  global builtinHeaderPath, systemRootPath
+  global targetBits, targetTriple, targetDarwinArch
+  global languageCStandard, languageCxxStandard, standardCxxLibrary
+
   params = getCompilationDBParams(fileName)
   args = params['args']
   args += splitOptions(vim.eval("g:clang_user_options"))
   args += splitOptions(vim.eval("b:clang_user_options"))
   args += splitOptions(vim.eval("b:clang_parameters"))
 
-  if builtinHeaderPath and '-nobuiltininc' not in args:
+  if targetTriple and not '-target' in args:
+    args.append("-target")
+    args.append(targetTriple)
+  elif targetDarwinArch and not '-arch' in args:
+    args.append("-arch")
+    args.append(targetDarwinArch)
+
+  if targetBits and not (set(('-m16','-m32','-m64')) <= set(args)):
+    args.append("-m" + targetBits)
+
+  if systemRootPath and not '-isysroot' in args:
+    args.append("-isysroot")
+    args.append(systemRootPath)
+
+  language = getNextArgument(args, "-x")
+  cxx_source = "c++" in language
+
+  if languageCStandard or languageCxxStandard or standardCxxLibrary:
+    if (not cxx_source and languageCStandard) or (cxx_source and languageCxxStandard):
+      if not any(arg.startswith('-std=') for arg in args):
+        args.append("-std=" + (languageCxxStandard if cxx_source else languageCStandard))
+
+    if cxx_source and standardCxxLibrary and not any(arg.startswith('-stdlib=') for arg in args):
+      args.append("-stdlib=" + standardCxxLibrary)
+
+  sys_root = getNextArgument(args, "-isysroot")
+  cxx_stdlib = getNextArgument(args, "-stdlib=", True)
+  if cxx_stdlib:
+    cxx_stdlib = cxx_stdlib.replace("-stdlib=", "")
+
+  library_path = Config.library_path
+
+  default_paths = getClangDefaultPaths(library_path, language, sys_root, cxx_stdlib)
+
+  if builtinHeaderPath and not (set(('-nobuiltininc', '-ffreestandaing')) <= set(args)):
     args.append("-I" + builtinHeaderPath)
+
+  if default_paths:
+    args = sum((["-isystem", path] for path in default_paths), []) + args
 
   return { 'args' : args,
            'cwd' : params['cwd'] }
