@@ -444,7 +444,10 @@ def getCompileParams(fileName):
   if cxx_stdlib:
     cxx_stdlib = cxx_stdlib.replace("-stdlib=", "")
 
-  library_path = Config.library_path
+  if Config.library_path:
+    library_path = Config.library_path
+  else:
+    library_path = Config.library_file
 
   default_paths = getClangDefaultPaths(library_path, language, sys_root, cxx_stdlib)
 
