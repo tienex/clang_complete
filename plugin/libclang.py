@@ -99,7 +99,6 @@ def getClangDefaultPaths(library_path, language, sys_root, cxx_stdlib):
   clang_args.append("-")
 
   clang_command = subprocess.Popen(clang_args,
-                                   encoding="utf-8",
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE,
                                    stdin=subprocess.PIPE,
